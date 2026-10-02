@@ -1,0 +1,12 @@
+{
+  "msal": {
+    "clientId": "e7dc4b42-c705-4a86-9b6d-be3cdafb5bd3",
+    "tenantId": "8d9b954a-787e-43fe-b998-6c448197fb42"
+  },
+  "environment": {
+    "environmentId": "7a5c7438-a0d8-ebc0-9b61-ad57aa550f0a",
+    "environmentUrl": "https://orgbc4fa1b4.crm.dynamics.com",
+    "tenantId": "8d9b954a-787e-43fe-b998-6c448197fb42",
+    "cachedAt": "2026-10-02T06:30:00Z"
+  }
+}

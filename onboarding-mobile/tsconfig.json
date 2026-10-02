@@ -1,0 +1,61 @@
+{
+  "extends": "@microsoft/power-apps-native-host/config/tsconfig",
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.d.ts",
+    "expo-env.d.ts",
+    ".expo/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/native-player"
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/components": [
+        "src/components"
+      ],
+      "@/hooks": [
+        "src/hooks"
+      ],
+      "@/utils": [
+        "src/utils"
+      ],
+      "@/tokens": [
+        "src/tokens"
+      ],
+      "@/generated": [
+        "src/generated"
+      ],
+      "@/native": [
+        "src/native"
+      ],
+      "@/services": [
+        "src/services"
+      ],
+      "@/components/*": [
+        "src/components/*"
+      ],
+      "@/hooks/*": [
+        "src/hooks/*"
+      ],
+      "@/utils/*": [
+        "src/utils/*"
+      ],
+      "@/tokens/*": [
+        "src/tokens/*"
+      ],
+      "@/generated/*": [
+        "src/generated/*"
+      ],
+      "@/native/*": [
+        "src/native/*"
+      ],
+      "@/services/*": [
+        "src/services/*"
+      ]
+    }
+  }
+}

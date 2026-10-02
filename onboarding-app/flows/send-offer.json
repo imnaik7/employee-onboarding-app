@@ -1,0 +1,699 @@
+{
+  "name": "Onboarding - Send Offer Letter",
+  "description": "When a candidate's Status becomes 'Offer Requested', generates the offer letter (with salary breakup) and sends it via DocuSign. Tracks the envelope: Accepted -> signed PDF to Offer Letters/Signed, checklist created, manager notified; Declined -> reason + copy to Offer Letters/Declined; no response in 30 days -> Expired.",
+  "connectors": [
+    "sharepointonline",
+    "docusigndemo",
+    "office365"
+  ],
+  "definition": {
+    "triggers": {
+      "When_offer_requested": {
+        "type": "OpenApiConnection",
+        "recurrence": {
+          "interval": 1,
+          "frequency": "Minute"
+        },
+        "splitOn": "@triggerOutputs()?['body/value']",
+        "conditions": [
+          {
+            "expression": "@equals(triggerOutputs()?['body/Status/Value'], 'Offer Requested')"
+          }
+        ],
+        "inputs": {
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connectionName": "shared_sharepointonline",
+            "operationId": "GetOnUpdatedItems"
+          },
+          "parameters": {
+            "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+            "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4"
+          },
+          "authentication": "@parameters('$authentication')"
+        },
+        "description": "Fires for Onboarding Candidates items whose Status is 'Offer Requested' (set by the app's Send offer button)."
+      }
+    },
+    "actions": {
+      "Company": {
+        "runAfter": {},
+        "type": "Compose",
+        "inputs": {
+          "name": "Power Platform AI Solution",
+          "address": "Company address line, City, State PIN",
+          "signatoryName": "HR Manager",
+          "signatoryTitle": "Human Resources",
+          "currency": "INR",
+          "acceptWithinDays": 7
+        },
+        "description": "Company name used in DocuSign subject lines. Letter/email design lives in flows/email_templates.py."
+      },
+      "Init_SignerStatus": {
+        "runAfter": {
+          "Company": [
+            "Succeeded"
+          ]
+        },
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "SignerStatus",
+              "type": "string",
+              "value": "sent"
+            }
+          ]
+        }
+      },
+      "Send_offer": {
+        "runAfter": {
+          "Init_SignerStatus": [
+            "Succeeded"
+          ]
+        },
+        "type": "Scope",
+        "actions": {
+          "Offer_letter_html": {
+            "runAfter": {},
+            "type": "Compose",
+            "inputs": "<html><head><meta charset=\"utf-8\"><style>body{font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0F172A;font-size:10.5pt;line-height:1.6;margin:0}.band{background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5,#7C3AED);color:#fff;padding:28px 44px}.band .co{font-size:18pt;font-weight:700}.band .tag{font-size:9pt;opacity:.85;letter-spacing:1.5px;text-transform:uppercase}.wrap{padding:28px 44px}h1{font-size:17pt;margin:4px 0 2px;color:#4F46E5}.meta{color:#64748B;font-size:9pt}.card{border:1px solid #E2E8F0;border-radius:10px;padding:14px 18px;margin:14px 0;background:#F8FAFC}.grid td{padding:3px 14px 3px 0;vertical-align:top}.grid .k{color:#64748B;width:150px}table.pay{border-collapse:collapse;width:100%;margin:10px 0}table.pay th{background:#EEF2FF;color:#3730A3;font-size:9pt;text-transform:uppercase;letter-spacing:.6px;padding:8px 10px;text-align:left}table.pay td{padding:8px 10px;border-bottom:1px solid #E2E8F0}.n{text-align:right}table.pay tfoot td{font-weight:700;background:#EEF2FF;color:#1E1B4B;border-bottom:0}h3{font-size:11.5pt;margin:20px 0 6px;color:#1E1B4B}ul{margin:6px 0;padding-left:18px}.sig{margin-top:30px;width:100%}.sig td{width:50%;vertical-align:bottom}.line{border-top:1px solid #94A3B8;margin-top:42px;padding-top:4px;color:#64748B;font-size:9pt;width:80%}.foot{margin-top:28px;border-top:1px solid #E2E8F0;padding-top:10px;color:#94A3B8;font-size:8pt;text-align:center}</style></head><body><div class=\"band\"><div class=\"tag\">Offer of Employment</div><div class=\"co\">&#9889; Power Platform AI Solution</div></div><div class=\"wrap\"><div class=\"meta\">Ref: OFFER-@{triggerOutputs()?['body/ID']}-@{formatDateTime(utcNow(),'yyyyMMdd')} &middot; Date: @{formatDateTime(utcNow(),'dd MMMM yyyy')}</div><h1>Welcome to the team, @{first(split(triggerOutputs()?['body/Title'],' '))}!</h1><p>Dear @{triggerOutputs()?['body/Title']},</p><p>Following our interviews, we are delighted to offer you the position of <b>@{triggerOutputs()?['body/Position']}</b> at <b>Power Platform AI Solution</b>. We were impressed by your experience and believe you will make an outstanding contribution.</p><div class=\"card\"><table class=\"grid\"><tr><td class=\"k\">Position</td><td><b>@{triggerOutputs()?['body/Position']}</b></td></tr><tr><td class=\"k\">Department</td><td>@{triggerOutputs()?['body/Department']}</td></tr><tr><td class=\"k\">Employment type</td><td>@{coalesce(triggerOutputs()?['body/EmploymentType/Value'],'Full-time')}</td></tr><tr><td class=\"k\">Reporting to</td><td>@{triggerOutputs()?['body/HiringManager']}</td></tr><tr><td class=\"k\">Work location</td><td>@{triggerOutputs()?['body/WorkLocation']}</td></tr><tr><td class=\"k\">Date of joining</td><td><b>@{formatDateTime(triggerOutputs()?['body/StartDate'],'dddd, dd MMMM yyyy')}</b></td></tr></table></div><h3>Compensation &amp; Salary Breakup</h3><p>Your annual Cost to Company (CTC) is <b>INR @{formatNumber(float(coalesce(triggerOutputs()?['body/Salary'],0)),'N0','en-IN')}</b>, structured as follows:</p><table class=\"pay\"><thead><tr><th>Component</th><th class=\"n\">Annual (INR)</th><th class=\"n\">Monthly (INR)</th></tr></thead><tbody><tr><td>Basic Salary</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/SalBasic'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/SalBasic'],0)),12),'N0','en-IN')}</td></tr><tr><td>House Rent Allowance (HRA)</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/SalHRA'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/SalHRA'],0)),12),'N0','en-IN')}</td></tr><tr><td>Special Allowance</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/SalSpecial'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/SalSpecial'],0)),12),'N0','en-IN')}</td></tr><tr><td>Employer PF Contribution</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/SalEmployerPF'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/SalEmployerPF'],0)),12),'N0','en-IN')}</td></tr><tr><td>Gratuity</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/SalGratuity'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/SalGratuity'],0)),12),'N0','en-IN')}</td></tr>@{if(greater(float(coalesce(triggerOutputs()?['body/SalVariable'],0)),0),concat('<tr><td>Variable Pay / Performance Bonus*</td><td class=\"n\">',formatNumber(float(triggerOutputs()?['body/SalVariable']),'N0','en-IN'),'</td><td class=\"n\">',formatNumber(div(float(triggerOutputs()?['body/SalVariable']),12),'N0','en-IN'),'</td></tr>'),'')}</tbody><tfoot><tr><td>Total CTC</td><td class=\"n\">@{formatNumber(float(coalesce(triggerOutputs()?['body/Salary'],0)),'N0','en-IN')}</td><td class=\"n\">@{formatNumber(div(float(coalesce(triggerOutputs()?['body/Salary'],0)),12),'N0','en-IN')}</td></tr></tfoot></table><p class=\"meta\">@{if(greater(float(coalesce(triggerOutputs()?['body/SalVariable'],0)),0),'* Variable pay is linked to individual and company performance and paid as per company policy. ','')}Statutory deductions (employee PF, professional tax, income tax) apply as per law.</p><h3>Terms of the offer</h3><ul><li>This offer is subject to satisfactory background verification and the documents listed in your onboarding checklist.</li><li>You will be on probation for six months from your date of joining.</li><li>Please sign this letter within <b>7 days</b> to confirm your acceptance.</li></ul><p>We are excited to have you on board and look forward to building the future of AI on the Power Platform together.</p><table class=\"sig\"><tr><td>Warm regards,<br/><b>Talent &amp; People Team</b><br/>Power Platform AI Solution</td><td><b>Accepted by:</b> @{triggerOutputs()?['body/Title']}<div class=\"line\">Signature &amp; date</div></td></tr></table><div class=\"foot\">Power Platform AI Solution &middot; This offer letter is confidential and intended only for the named candidate.</div></div></body></html>",
+            "description": "Offer letter as HTML: role details + salary breakup table (annual and monthly, Indian number format). DocuSign converts it to PDF."
+          },
+          "Create_envelope": {
+            "runAfter": {
+              "Offer_letter_html": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                "connectionName": "shared_docusigndemo",
+                "operationId": "CreateBlankEnvelopeV2"
+              },
+              "parameters": {
+                "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                "emailSubject": "Your offer letter from Power Platform AI Solution – @{triggerOutputs()?['body/Position']}"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "Add_offer_letter": {
+            "runAfter": {
+              "Create_envelope": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                "connectionName": "shared_docusigndemo",
+                "operationId": "AddDocumentsToEnvelope"
+              },
+              "parameters": {
+                "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                "envelopeId": "@body('Create_envelope')?['envelopeId']",
+                "body/documents": [
+                  {
+                    "documentBase64": "@{base64(outputs('Offer_letter_html'))}",
+                    "fileExtension": "html",
+                    "name": "Offer Letter - @{triggerOutputs()?['body/Title']}"
+                  }
+                ]
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "Add_candidate_as_signer": {
+            "runAfter": {
+              "Add_offer_letter": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                "connectionName": "shared_docusigndemo",
+                "operationId": "AddRecipientToEnvelopeV2"
+              },
+              "parameters": {
+                "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                "envelopeId": "@body('Create_envelope')?['envelopeId']",
+                "recipientType": "signers",
+                "recipientId": "1",
+                "routingOrder": "1",
+                "additionalRecipientParams/name": "@{trim(triggerOutputs()?['body/Title'])}",
+                "additionalRecipientParams/email": "@{trim(triggerOutputs()?['body/Email'])}"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "Send_envelope": {
+            "runAfter": {
+              "Add_candidate_as_signer": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                "connectionName": "shared_docusigndemo",
+                "operationId": "SendDraftEnvelope"
+              },
+              "parameters": {
+                "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                "envelopeId": "@body('Create_envelope')?['envelopeId']"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "Mark_offer_sent": {
+            "runAfter": {
+              "Send_envelope": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "PatchItem"
+              },
+              "parameters": {
+                "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4",
+                "id": "@triggerOutputs()?['body/ID']",
+                "item/Title": "@triggerOutputs()?['body/Title']",
+                "item/Email": "@triggerOutputs()?['body/Email']",
+                "item/Status/Value": "Offer Sent",
+                "item/EnvelopeId": "@body('Create_envelope')?['envelopeId']",
+                "item/OfferSentOn": "@utcNow()"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          }
+        }
+      },
+      "Handle_send_failure": {
+        "runAfter": {
+          "Send_offer": [
+            "Failed",
+            "TimedOut"
+          ]
+        },
+        "type": "Scope",
+        "actions": {
+          "Revert_to_Selected": {
+            "runAfter": {},
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                "connectionName": "shared_sharepointonline",
+                "operationId": "PatchItem"
+              },
+              "parameters": {
+                "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4",
+                "id": "@triggerOutputs()?['body/ID']",
+                "item/Title": "@triggerOutputs()?['body/Title']",
+                "item/Email": "@triggerOutputs()?['body/Email']",
+                "item/Status/Value": "Selected",
+                "item/Notes": "@{coalesce(triggerOutputs()?['body/Notes'],'')}\n[@{formatDateTime(utcNow(),'dd MMM yyyy HH:mm')} UTC] Offer letter could not be sent automatically - check the 'Onboarding - Send Offer Letter' run history, then press Send offer again."
+              },
+              "authentication": "@parameters('$authentication')"
+            },
+            "description": "Puts the candidate back to Selected so HR can retry from the app."
+          },
+          "Fail_run": {
+            "runAfter": {
+              "Revert_to_Selected": [
+                "Succeeded",
+                "Failed"
+              ]
+            },
+            "type": "Terminate",
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "OfferNotSent",
+                "message": "DocuSign envelope could not be created or sent."
+              }
+            }
+          }
+        }
+      },
+      "Wait_for_response": {
+        "runAfter": {
+          "Email_candidate_offer_sent": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Until",
+        "expression": "@or(equals(variables('SignerStatus'),'completed'),equals(variables('SignerStatus'),'declined'))",
+        "limit": {
+          "count": 9000,
+          "timeout": "P30D"
+        },
+        "actions": {
+          "Delay_5_minutes": {
+            "runAfter": {},
+            "type": "Wait",
+            "inputs": {
+              "interval": {
+                "count": 5,
+                "unit": "Minute"
+              }
+            }
+          },
+          "List_recipients": {
+            "runAfter": {
+              "Delay_5_minutes": [
+                "Succeeded"
+              ]
+            },
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                "connectionName": "shared_docusigndemo",
+                "operationId": "GetRecipientStatus"
+              },
+              "parameters": {
+                "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                "envelopeId": "@body('Create_envelope')?['envelopeId']"
+              },
+              "authentication": "@parameters('$authentication')"
+            }
+          },
+          "Set_SignerStatus": {
+            "runAfter": {
+              "List_recipients": [
+                "Succeeded"
+              ]
+            },
+            "type": "SetVariable",
+            "inputs": {
+              "name": "SignerStatus",
+              "value": "@{toLower(coalesce(first(body('List_recipients')?['signers'])?['status'],'sent'))}"
+            }
+          }
+        },
+        "description": "Checks DocuSign every 5 minutes until the candidate signs or declines (gives up after 30 days)."
+      },
+      "Outcome": {
+        "runAfter": {
+          "Wait_for_response": [
+            "Succeeded",
+            "Failed",
+            "TimedOut"
+          ]
+        },
+        "type": "Switch",
+        "expression": "@variables('SignerStatus')",
+        "cases": {
+          "Signed": {
+            "case": "completed",
+            "actions": {
+              "Get_signed_letter": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                    "connectionName": "shared_docusigndemo",
+                    "operationId": "GetDocumentsV2"
+                  },
+                  "parameters": {
+                    "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                    "envelopeId": "@body('Create_envelope')?['envelopeId']",
+                    "documentId": "Combined without COC : Get all documents as single pdf"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Save_signed_letter": {
+                "runAfter": {
+                  "Get_signed_letter": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "CreateFile"
+                  },
+                  "parameters": {
+                    "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                    "folderPath": "/OfferLetters/Signed",
+                    "name": "@{replace(triggerOutputs()?['body/Title'],' ','_')}_@{triggerOutputs()?['body/ID']}_Offer_Signed_@{formatDateTime(utcNow(),'yyyyMMdd')}.pdf",
+                    "body": "@body('Get_signed_letter')"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "contentTransfer": {
+                    "transferMode": "Chunked"
+                  }
+                }
+              },
+              "Mark_accepted": {
+                "runAfter": {
+                  "Save_signed_letter": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                    "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/Email": "@triggerOutputs()?['body/Email']",
+                    "item/Status/Value": "Accepted",
+                    "item/RespondedOn": "@utcNow()",
+                    "item/SignedOfferUrl": "https://imnaik.sharepoint.com/sites/My-SP-Dev@{body('Save_signed_letter')?['Path']}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Checklist_template": {
+                "runAfter": {
+                  "Mark_accepted": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": [
+                  {
+                    "title": "Collect ID proof & signed NDA",
+                    "category": "HR Docs",
+                    "owner": "HR",
+                    "offset": -7
+                  },
+                  {
+                    "title": "Bank & tax details submitted",
+                    "category": "HR Docs",
+                    "owner": "HR",
+                    "offset": -5
+                  },
+                  {
+                    "title": "Create email & M365 account",
+                    "category": "IT",
+                    "owner": "IT",
+                    "offset": -3
+                  },
+                  {
+                    "title": "Ship laptop & accessories",
+                    "category": "IT",
+                    "owner": "IT",
+                    "offset": -3
+                  },
+                  {
+                    "title": "Desk, access card & parking",
+                    "category": "Facilities",
+                    "owner": "Facilities",
+                    "offset": -1
+                  },
+                  {
+                    "title": "Welcome session & team intro",
+                    "category": "Orientation",
+                    "owner": "Manager",
+                    "offset": 0
+                  },
+                  {
+                    "title": "Assign buddy & 30-day goals",
+                    "category": "Orientation",
+                    "owner": "Manager",
+                    "offset": 2
+                  }
+                ],
+                "description": "Default onboarding checklist; offsets are days relative to the start date. Keep in sync with DEFAULT_TASKS in the app."
+              },
+              "Create_checklist": {
+                "runAfter": {
+                  "Checklist_template": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Foreach",
+                "foreach": "@outputs('Checklist_template')",
+                "actions": {
+                  "Create_task": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "PostItem"
+                      },
+                      "parameters": {
+                        "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                        "table": "fa747535-e3fe-4ad9-9cdb-3199bf31f307",
+                        "item/Title": "@items('Create_checklist')?['title']",
+                        "item/CandidateId": "@triggerOutputs()?['body/ID']",
+                        "item/Category/Value": "@items('Create_checklist')?['category']",
+                        "item/DueDate": "@addDays(triggerOutputs()?['body/StartDate'], items('Create_checklist')?['offset'], 'yyyy-MM-dd')",
+                        "item/IsDone": false,
+                        "item/TaskOwner": "@items('Create_checklist')?['owner']"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              },
+              "If_manager_email": {
+                "runAfter": {
+                  "Create_checklist": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "If",
+                "expression": {
+                  "and": [
+                    {
+                      "not": {
+                        "equals": [
+                          "@coalesce(triggerOutputs()?['body/ManagerEmail'],'')",
+                          ""
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "actions": {
+                  "Notify_manager": {
+                    "runAfter": {},
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailV2"
+                      },
+                      "parameters": {
+                        "emailMessage/To": "@triggerOutputs()?['body/ManagerEmail']",
+                        "emailMessage/Subject": "🎉 @{triggerOutputs()?['body/Title']} accepted the @{triggerOutputs()?['body/Position']} offer",
+                        "emailMessage/Body": "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#F1F5F9\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#F1F5F9;padding:32px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,.08)\"><tr><td style=\"background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5 0%,#7C3AED 60%,#DB2777 100%);padding:28px 36px\"><table role=\"presentation\" width=\"100%\"><tr><td style=\"color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.2px\">&#9889; Power Platform AI Solution</td><td align=\"right\"><span style=\"display:inline-block;background:rgba(255,255,255,.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:6px 12px;border-radius:99px\">Offer accepted</span></td></tr></table><div style=\"color:#ffffff;font-size:26px;font-weight:700;line-height:1.3;margin-top:22px\">@{triggerOutputs()?['body/Title']} accepted the offer! &#127881;</div></td></tr><tr><td style=\"padding:32px 36px 36px;color:#0F172A;font-size:15px;line-height:1.65\"><p style=\"margin:0 0 12px\">Hi @{triggerOutputs()?['body/HiringManager']}, great news &mdash; <b>@{triggerOutputs()?['body/Title']}</b> has e-signed the offer for <b>@{triggerOutputs()?['body/Position']}</b>.</p><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #E2E8F0;border-radius:12px;border-collapse:separate;overflow:hidden;margin:20px 0\"><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Candidate</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/Title']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Role</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/Position']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Joining date</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{formatDateTime(triggerOutputs()?['body/StartDate'],'dddd, dd MMMM yyyy')}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Location</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/WorkLocation']}</td></tr></table><p style=\"margin:0\">The onboarding checklist (IT setup, HR documents, facilities and orientation) has been created automatically. Please plan a welcome session and assign a buddy for the first week.</p><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0 8px\"><tr><td style=\"border-radius:10px;background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5,#7C3AED)\"><a href=\"https://imnaik.sharepoint.com/sites/My-SP-Dev@{body('Save_signed_letter')?['Path']}\" style=\"display:inline-block;padding:13px 28px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\">Open signed offer letter &rarr;</a></td></tr></table></td></tr><tr><td style=\"background:#F8FAFC;padding:20px 36px;border-top:1px solid #E2E8F0;color:#64748B;font-size:12px;line-height:1.6\"><b style=\"color:#0F172A\">Power Platform AI Solution</b> &middot; Talent &amp; People Team<br/>This is an automated message from our onboarding system.</td></tr></table></td></tr></table></body></html>",
+                        "emailMessage/Importance": "Normal"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                }
+              },
+              "Welcome_candidate": {
+                "runAfter": {
+                  "Mark_accepted": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connectionName": "shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "parameters": {
+                    "emailMessage/To": "@triggerOutputs()?['body/Email']",
+                    "emailMessage/Subject": "🚀 Welcome to Power Platform AI Solution, @{first(split(triggerOutputs()?['body/Title'],' '))}!",
+                    "emailMessage/Body": "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#F1F5F9\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#F1F5F9;padding:32px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,.08)\"><tr><td style=\"background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5 0%,#7C3AED 60%,#DB2777 100%);padding:28px 36px\"><table role=\"presentation\" width=\"100%\"><tr><td style=\"color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.2px\">&#9889; Power Platform AI Solution</td><td align=\"right\"><span style=\"display:inline-block;background:rgba(255,255,255,.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:6px 12px;border-radius:99px\">Welcome aboard</span></td></tr></table><div style=\"color:#ffffff;font-size:26px;font-weight:700;line-height:1.3;margin-top:22px\">Welcome to Power Platform AI Solution, @{first(split(triggerOutputs()?['body/Title'],' '))}! &#128640;</div></td></tr><tr><td style=\"padding:32px 36px 36px;color:#0F172A;font-size:15px;line-height:1.65\"><p style=\"margin:0 0 12px\">Thank you for signing your offer &mdash; we're so excited you're joining us as <b>@{triggerOutputs()?['body/Position']}</b>. Here's everything you need for a great first day.</p><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #E2E8F0;border-radius:12px;border-collapse:separate;overflow:hidden;margin:20px 0\"><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Joining date</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{formatDateTime(triggerOutputs()?['body/StartDate'],'dddd, dd MMMM yyyy')}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Reporting to</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/HiringManager']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Location</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/WorkLocation']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Team</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/Department']}</td></tr></table><p style=\"margin:0 0 6px\"><b>Before day one</b></p><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td style=\"padding:6px 0;width:28px;vertical-align:top;font-size:16px\">&#128196;</td><td style=\"padding:6px 0;color:#0F172A;font-size:14px\">Keep your ID proof, PAN and bank details handy &mdash; HR will reach out to collect them.</td></tr><tr><td style=\"padding:6px 0;width:28px;vertical-align:top;font-size:16px\">&#128187;</td><td style=\"padding:6px 0;color:#0F172A;font-size:14px\">Your laptop and company account will be ready before you join.</td></tr><tr><td style=\"padding:6px 0;width:28px;vertical-align:top;font-size:16px\">&#129309;</td><td style=\"padding:6px 0;color:#0F172A;font-size:14px\">You will be paired with an onboarding buddy in your first week.</td></tr></table><table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:24px 0 8px\"><tr><td style=\"border-radius:10px;background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5,#7C3AED)\"><a href=\"https://imnaik.sharepoint.com/sites/My-SP-Dev@{body('Save_signed_letter')?['Path']}\" style=\"display:inline-block;padding:13px 28px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\">View your signed offer letter &rarr;</a></td></tr></table><p style=\"margin:16px 0 0;color:#64748B;font-size:12px;line-height:1.6\">A copy of your signed offer letter is stored securely. We can't wait to meet you!</p></td></tr><tr><td style=\"background:#F8FAFC;padding:20px 36px;border-top:1px solid #E2E8F0;color:#64748B;font-size:12px;line-height:1.6\"><b style=\"color:#0F172A\">Power Platform AI Solution</b> &middot; Talent &amp; People Team<br/>This is an automated message from our onboarding system.</td></tr></table></td></tr></table></body></html>",
+                    "emailMessage/Importance": "Normal"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          },
+          "Declined": {
+            "case": "declined",
+            "actions": {
+              "Get_declined_letter": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_docusigndemo",
+                    "connectionName": "shared_docusigndemo",
+                    "operationId": "GetDocumentsV2"
+                  },
+                  "parameters": {
+                    "accountId": "85b1d96d-8f27-42d0-9354-c2a11c917c92",
+                    "envelopeId": "@body('Create_envelope')?['envelopeId']",
+                    "documentId": "Combined without COC : Get all documents as single pdf"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              },
+              "Save_declined_letter": {
+                "runAfter": {
+                  "Get_declined_letter": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "CreateFile"
+                  },
+                  "parameters": {
+                    "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                    "folderPath": "/OfferLetters/Declined",
+                    "name": "@{replace(triggerOutputs()?['body/Title'],' ','_')}_@{triggerOutputs()?['body/ID']}_Offer_Declined_@{formatDateTime(utcNow(),'yyyyMMdd')}.pdf",
+                    "body": "@body('Get_declined_letter')"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "runtimeConfiguration": {
+                  "contentTransfer": {
+                    "transferMode": "Chunked"
+                  }
+                }
+              },
+              "Mark_declined": {
+                "runAfter": {
+                  "Save_declined_letter": [
+                    "Succeeded",
+                    "Failed"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                    "connectionName": "shared_sharepointonline",
+                    "operationId": "PatchItem"
+                  },
+                  "parameters": {
+                    "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                    "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4",
+                    "id": "@triggerOutputs()?['body/ID']",
+                    "item/Title": "@triggerOutputs()?['body/Title']",
+                    "item/Email": "@triggerOutputs()?['body/Email']",
+                    "item/Status/Value": "Declined",
+                    "item/RespondedOn": "@utcNow()",
+                    "item/DeclineReason": "@{coalesce(first(body('List_recipients')?['signers'])?['declinedReason'],'No reason given')}",
+                    "item/SignedOfferUrl": "@{if(equals(actions('Save_declined_letter')?['status'],'Succeeded'),concat('https://imnaik.sharepoint.com/sites/My-SP-Dev',body('Save_declined_letter')?['Path']),'')}"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "description": "Records the decline + the candidate's reason; keeps a copy of the declined offer for audit."
+              },
+              "Thank_candidate": {
+                "runAfter": {
+                  "Mark_declined": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "connectionName": "shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "parameters": {
+                    "emailMessage/To": "@triggerOutputs()?['body/Email']",
+                    "emailMessage/Subject": "Thank you from Power Platform AI Solution",
+                    "emailMessage/Body": "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#F1F5F9\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#F1F5F9;padding:32px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,.08)\"><tr><td style=\"background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5 0%,#7C3AED 60%,#DB2777 100%);padding:28px 36px\"><table role=\"presentation\" width=\"100%\"><tr><td style=\"color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.2px\">&#9889; Power Platform AI Solution</td><td align=\"right\"><span style=\"display:inline-block;background:rgba(255,255,255,.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:6px 12px;border-radius:99px\">Offer update</span></td></tr></table><div style=\"color:#ffffff;font-size:26px;font-weight:700;line-height:1.3;margin-top:22px\">Thank you, @{first(split(triggerOutputs()?['body/Title'],' '))}</div></td></tr><tr><td style=\"padding:32px 36px 36px;color:#0F172A;font-size:15px;line-height:1.65\"><p style=\"margin:0 0 12px\">We've received your response to our offer for <b>@{triggerOutputs()?['body/Position']}</b>. While we're sorry it didn't work out this time, we truly appreciate the time and energy you invested in our interview process.</p><p style=\"margin:0\">We would love to stay in touch &mdash; if your plans change or a future role at Power Platform AI Solution interests you, please don't hesitate to reach out. We wish you every success in your next chapter.</p><p style=\"margin:16px 0 0;color:#64748B;font-size:12px;line-height:1.6\">Warm regards, the Talent &amp; People Team.</p></td></tr><tr><td style=\"background:#F8FAFC;padding:20px 36px;border-top:1px solid #E2E8F0;color:#64748B;font-size:12px;line-height:1.6\"><b style=\"color:#0F172A\">Power Platform AI Solution</b> &middot; Talent &amp; People Team<br/>This is an automated message from our onboarding system.</td></tr></table></td></tr></table></body></html>",
+                    "emailMessage/Importance": "Normal"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                }
+              }
+            }
+          }
+        },
+        "default": {
+          "actions": {
+            "Mark_expired": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "PatchItem"
+                },
+                "parameters": {
+                  "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+                  "table": "8cb9a8c5-8425-40b8-b22c-81c8fc0979a4",
+                  "id": "@triggerOutputs()?['body/ID']",
+                  "item/Title": "@triggerOutputs()?['body/Title']",
+                  "item/Email": "@triggerOutputs()?['body/Email']",
+                  "item/Status/Value": "Expired",
+                  "item/RespondedOn": "@utcNow()"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            }
+          }
+        }
+      },
+      "Email_candidate_offer_sent": {
+        "runAfter": {
+          "Send_offer": [
+            "Succeeded"
+          ]
+        },
+        "type": "OpenApiConnection",
+        "inputs": {
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+            "connectionName": "shared_office365",
+            "operationId": "SendEmailV2"
+          },
+          "parameters": {
+            "emailMessage/To": "@triggerOutputs()?['body/Email']",
+            "emailMessage/Subject": "🎉 Your offer from Power Platform AI Solution is waiting for your signature",
+            "emailMessage/Body": "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#F1F5F9\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#F1F5F9;padding:32px 12px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif\"><tr><td align=\"center\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,.08)\"><tr><td style=\"background:#4F46E5;background-image:linear-gradient(135deg,#4F46E5 0%,#7C3AED 60%,#DB2777 100%);padding:28px 36px\"><table role=\"presentation\" width=\"100%\"><tr><td style=\"color:#ffffff;font-size:18px;font-weight:700;letter-spacing:.2px\">&#9889; Power Platform AI Solution</td><td align=\"right\"><span style=\"display:inline-block;background:rgba(255,255,255,.18);color:#ffffff;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:6px 12px;border-radius:99px\">Offer letter</span></td></tr></table><div style=\"color:#ffffff;font-size:26px;font-weight:700;line-height:1.3;margin-top:22px\">Great news, @{first(split(triggerOutputs()?['body/Title'],' '))} &mdash; your offer is here! &#127881;</div></td></tr><tr><td style=\"padding:32px 36px 36px;color:#0F172A;font-size:15px;line-height:1.65\"><p style=\"margin:0 0 12px\">We're thrilled to offer you the role of <b>@{triggerOutputs()?['body/Position']}</b> at Power Platform AI Solution. Your official offer letter, including the full salary breakup, has just been sent to you through <b>DocuSign</b> for e-signature.</p><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"border:1px solid #E2E8F0;border-radius:12px;border-collapse:separate;overflow:hidden;margin:20px 0\"><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Role</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/Position']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Team</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/Department']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Location</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{triggerOutputs()?['body/WorkLocation']}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Proposed joining date</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">@{formatDateTime(triggerOutputs()?['body/StartDate'],'dddd, dd MMMM yyyy')}</td></tr><tr><td style=\"padding:10px 16px;color:#64748B;font-size:13px;border-bottom:1px solid #E2E8F0;width:40%\">Annual CTC</td><td style=\"padding:10px 16px;color:#0F172A;font-size:14px;font-weight:600;border-bottom:1px solid #E2E8F0\">INR @{formatNumber(float(coalesce(triggerOutputs()?['body/Salary'],0)),'N0','en-IN')}</td></tr></table><p style=\"margin:0 0 6px\"><b>Next steps</b></p><ol style=\"margin:0;padding-left:20px;color:#0F172A\"><li>Open the DocuSign email titled <i>&ldquo;Your offer letter from Power Platform AI Solution&rdquo;</i>.</li><li>Review the letter and salary breakup.</li><li>Sign to accept &mdash; it takes under a minute.</li></ol><p style=\"margin:16px 0 0;color:#64748B;font-size:12px;line-height:1.6\">Please sign within 7 days. Questions? Simply reply to this email and our Talent team will help.</p></td></tr><tr><td style=\"background:#F8FAFC;padding:20px 36px;border-top:1px solid #E2E8F0;color:#64748B;font-size:12px;line-height:1.6\"><b style=\"color:#0F172A\">Power Platform AI Solution</b> &middot; Talent &amp; People Team<br/>This is an automated message from our onboarding system.</td></tr></table></td></tr></table></body></html>",
+            "emailMessage/Importance": "Normal"
+          },
+          "authentication": "@parameters('$authentication')"
+        }
+      }
+    }
+  }
+}

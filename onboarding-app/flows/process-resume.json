@@ -1,0 +1,283 @@
+{
+  "name": "Onboarding - Process Resume",
+  "description": "Called from the onboarding apps. Saves the uploaded resume to the SharePoint Resumes library and, when AI is requested, extracts candidate details with the 'Onboarding Resume Extractor' prompt. AI failures (e.g. no credits) never block: the app falls back to manual entry.",
+  "connectors": [
+    "sharepointonline",
+    "commondataserviceforapps"
+  ],
+  "definition": {
+    "triggers": {
+      "manual": {
+        "type": "Request",
+        "kind": "PowerAppV2",
+        "inputs": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "title": "fileName",
+                "type": "string",
+                "description": "Original resume file name",
+                "x-ms-dynamically-added": true,
+                "x-ms-content-hint": "TEXT"
+              },
+              "text_1": {
+                "title": "fileBase64",
+                "type": "string",
+                "description": "Resume file content as base64",
+                "x-ms-dynamically-added": true,
+                "x-ms-content-hint": "TEXT"
+              },
+              "text_2": {
+                "title": "useAi",
+                "type": "string",
+                "description": "'true' to auto-fill with AI, 'false' for manual entry",
+                "x-ms-dynamically-added": true,
+                "x-ms-content-hint": "TEXT"
+              }
+            },
+            "required": [
+              "text",
+              "text_1",
+              "text_2"
+            ]
+          }
+        }
+      }
+    },
+    "actions": {
+      "Init_AiStatus": {
+        "runAfter": {},
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "AiStatus",
+              "type": "string",
+              "value": "skipped"
+            }
+          ]
+        },
+        "description": "skipped = HR chose manual entry; done = AI extracted details; failed = AI unavailable (credits/timeout), fall back to manual."
+      },
+      "Init_Extracted": {
+        "runAfter": {
+          "Init_AiStatus": [
+            "Succeeded"
+          ]
+        },
+        "type": "InitializeVariable",
+        "inputs": {
+          "variables": [
+            {
+              "name": "Extracted",
+              "type": "string",
+              "value": "{}"
+            }
+          ]
+        }
+      },
+      "Safe_file_name": {
+        "runAfter": {
+          "Init_Extracted": [
+            "Succeeded"
+          ]
+        },
+        "type": "Compose",
+        "inputs": "@{formatDateTime(utcNow(),'yyyyMMdd-HHmmss')}_@{replace(replace(replace(replace(triggerBody()?['text'],' ','_'),'#',''),'%',''),'&','and')}",
+        "description": "Timestamp prefix keeps every upload unique; strips characters SharePoint rejects in file names."
+      },
+      "Save_resume": {
+        "runAfter": {
+          "Safe_file_name": [
+            "Succeeded"
+          ]
+        },
+        "type": "OpenApiConnection",
+        "inputs": {
+          "host": {
+            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+            "connectionName": "shared_sharepointonline",
+            "operationId": "CreateFile"
+          },
+          "parameters": {
+            "dataset": "https://imnaik.sharepoint.com/sites/My-SP-Dev",
+            "folderPath": "/Resumes",
+            "name": "@outputs('Safe_file_name')",
+            "body": "@base64ToBinary(triggerBody()?['text_1'])"
+          },
+          "authentication": "@parameters('$authentication')"
+        },
+        "runtimeConfiguration": {
+          "contentTransfer": {
+            "transferMode": "Chunked"
+          }
+        },
+        "description": "Stores the resume in the Resumes library on My-SP-Dev."
+      },
+      "If_AI_requested": {
+        "runAfter": {
+          "Save_resume": [
+            "Succeeded"
+          ]
+        },
+        "type": "If",
+        "expression": {
+          "and": [
+            {
+              "equals": [
+                "@toLower(coalesce(triggerBody()?['text_2'],'false'))",
+                "true"
+              ]
+            }
+          ]
+        },
+        "actions": {
+          "AI_extract": {
+            "runAfter": {},
+            "type": "Scope",
+            "actions": {
+              "Recognize_text": {
+                "runAfter": {},
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "providers/Microsoft.ProcessSimple/operationGroups/aibuilder",
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "aibuilderpredict_textrecognition"
+                  },
+                  "parameters": {
+                    "item/requestv2/base64Encoded": "@base64ToBinary(triggerBody()?['text_1'])"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "description": "AI Builder OCR: reads text from the PDF / photo. The connector expects file content (binary) and base64-encodes it itself, so pass base64ToBinary(...) — a raw base64 string gets double-encoded. Word files fall back to manual entry."
+              },
+              "Resume_text": {
+                "runAfter": {
+                  "Recognize_text": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@{if(empty(body('Recognize_text')?['responsev2']?['predictionOutput']?['fullText']), substring(string(body('Recognize_text')?['responsev2']?['predictionOutput']), 0, min(length(string(body('Recognize_text')?['responsev2']?['predictionOutput'])), 60000)), substring(body('Recognize_text')?['responsev2']?['predictionOutput']?['fullText'], 0, min(length(body('Recognize_text')?['responsev2']?['predictionOutput']?['fullText']), 60000)))}",
+                "description": "OCR result serialised (capped at 60k chars); the prompt reads the text out of it."
+              },
+              "Extract_details": {
+                "runAfter": {
+                  "Resume_text": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "apiId": "providers/Microsoft.ProcessSimple/operationGroups/aibuilder",
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "aibuilderpredict_customprompt"
+                  },
+                  "parameters": {
+                    "recordId": "bb44afdb-c376-4c58-80e0-af61c12eaa8d",
+                    "item/requestv2/ResumeText": "@outputs('Resume_text')"
+                  },
+                  "authentication": "@parameters('$authentication')"
+                },
+                "description": "Runs the 'Onboarding Resume Extractor' prompt (JSON output). Consumes AI Builder credits."
+              },
+              "Set_Extracted": {
+                "runAfter": {
+                  "Extract_details": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "Extracted",
+                  "value": "@{coalesce(body('Extract_details')?['responsev2']?['predictionOutput']?['text'], string(body('Extract_details')?['responsev2']?['predictionOutput']?['structuredOutput']), '{}')}"
+                }
+              }
+            },
+            "description": "OCR + prompt. Any failure here (no credits, unsupported file, timeout) sets AiStatus=failed and the app falls back to manual entry."
+          },
+          "AI_succeeded": {
+            "runAfter": {
+              "AI_extract": [
+                "Succeeded"
+              ]
+            },
+            "type": "SetVariable",
+            "inputs": {
+              "name": "AiStatus",
+              "value": "done"
+            }
+          },
+          "AI_failed": {
+            "runAfter": {
+              "AI_extract": [
+                "Failed",
+                "TimedOut",
+                "Skipped"
+              ]
+            },
+            "type": "SetVariable",
+            "inputs": {
+              "name": "AiStatus",
+              "value": "failed"
+            },
+            "description": "AI credits exhausted / prompt error: keep going so HR can enter details manually."
+          }
+        },
+        "else": {
+          "actions": {}
+        }
+      },
+      "Respond_to_app": {
+        "runAfter": {
+          "If_AI_requested": [
+            "Succeeded",
+            "Failed",
+            "TimedOut",
+            "Skipped"
+          ]
+        },
+        "type": "Response",
+        "kind": "PowerApp",
+        "inputs": {
+          "statusCode": 200,
+          "body": {
+            "resumeurl": "https://imnaik.sharepoint.com/sites/My-SP-Dev@{body('Save_resume')?['Path']}",
+            "resumefilename": "@{outputs('Safe_file_name')}",
+            "aistatus": "@{variables('AiStatus')}",
+            "extracted": "@{variables('Extracted')}"
+          },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "resumeurl": {
+                "title": "resumeUrl",
+                "type": "string",
+                "x-ms-dynamically-added": true
+              },
+              "resumefilename": {
+                "title": "resumeFileName",
+                "type": "string",
+                "x-ms-dynamically-added": true
+              },
+              "aistatus": {
+                "title": "aiStatus",
+                "type": "string",
+                "x-ms-dynamically-added": true
+              },
+              "extracted": {
+                "title": "extracted",
+                "type": "string",
+                "x-ms-dynamically-added": true
+              }
+            }
+          }
+        },
+        "description": "Always runs (even when the AI branch fails) so the app gets the resume link and can fall back to manual entry."
+      }
+    }
+  }
+}

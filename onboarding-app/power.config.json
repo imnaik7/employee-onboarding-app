@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "appId": "0b21dc3c-7dc5-453c-9539-8ab8efb2c4bd",
+  "appDisplayName": "Employee Onboarding",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "7a5c7438-a0d8-ebc0-9b61-ad57aa550f0a",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "7c49b3be-c420-42c8-a95c-b7d79701a80b": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint",
+      "dataSources": [
+        "sharepointonline"
+      ],
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "onb_sharepointonline"
+    },
+    "2ec7ec5a-6362-42b8-8596-5b82e88c8473": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "displayName": "Office 365 Outlook",
+      "dataSources": [
+        "office365"
+      ],
+      "dataSets": {},
+      "xrmConnectionReferenceLogicalName": "onb_office365"
+    },
+    "5ce6c74d-e72a-4600-914d-ccb394844162": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "onboarding_processresume"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "59290348-25be-f111-a059-70a8a58ba805",
+        "workflowDisplayName": "Onboarding - Process Resume",
+        "workflowName": "630c15ee-7b83-ec6e-ed4d-8234d3411160"
+      }
+    }
+  },
+  "databaseReferences": {}
+}
