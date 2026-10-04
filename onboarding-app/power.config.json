@@ -40,6 +40,15 @@
         "workflowDisplayName": "Onboarding - Process Resume",
         "workflowName": "630c15ee-7b83-ec6e-ed4d-8234d3411160"
       }
+    },
+    "328c0d86-2f9a-4b5c-bf78-191759fb8391": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_microsoftcopilotstudio",
+      "displayName": "Microsoft Copilot Studio",
+      "dataSources": [
+        "microsoftcopilotstudio"
+      ],
+      "authenticationType": "oauthDefault",
+      "dataSets": {}
     }
   },
   "databaseReferences": {}

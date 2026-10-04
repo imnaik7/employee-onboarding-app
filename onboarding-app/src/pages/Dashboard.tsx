@@ -133,8 +133,13 @@ export function Dashboard({ onNavigate }: { onNavigate: Navigate }) {
               <Sparkle20Filled /> {new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
             </span>
             <h1>
-              {greeting()}
-              {first ? `, ${first}` : ''} <span className="wave">👋</span>
+              <span className="grad-text">
+                {greeting()}
+                {first ? `, ${first}` : ''}
+              </span>{' '}
+              <span className="wave" aria-hidden>
+                👋
+              </span>
             </h1>
             <p className="hero-sub">
               {m.todays.length ? `${m.todays.length} interview${m.todays.length > 1 ? 's' : ''} today` : 'No interviews today'} ·{' '}

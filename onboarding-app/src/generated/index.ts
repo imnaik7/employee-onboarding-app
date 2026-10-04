@@ -4,11 +4,13 @@
  */
 
 // Models
+export * as MicrosoftCopilotStudioModel from './models/MicrosoftCopilotStudioModel';
 export * as Office365OutlookModel from './models/Office365OutlookModel';
 export * as Onboarding_ProcessResumeModel from './models/Onboarding_ProcessResumeModel';
 export * as SharePointModel from './models/SharePointModel';
 
 // Services
+export * from './services/MicrosoftCopilotStudioService';
 export * from './services/Office365OutlookService';
 export * from './services/Onboarding_ProcessResumeService';
 export * from './services/SharePointService';

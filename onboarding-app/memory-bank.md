@@ -36,3 +36,10 @@
 - Web app v1.1.0 (Premium SaaS UI) deployed 2026-10-02 into solution (redeploy: `npm run build && npx --no-install pa app push -s 9715db37-24be-f111-a059-70a8a58ba805`)
 - Native mobile app built in ..\onboarding-mobile (runs on iOS dev client)
 - End-to-end test of resume upload with AI (OCR path) and the full offer flow still to do
+
+## Copilot agent (2026-10-04)
+- Agent "Onboarding Copilot" `onb_onboardingCopilot` (bot 325e6f2f-d7bf-f111-a05a-00224832c67c) in EmployeeOnboarding — created/updated/published by `node onboarding-app/copilot/create-agent.mjs` (Web API: bots → PvaProvision → botcomponents gpt.default + SharePoint knowledge → PvaPublish). No `{}` in instructions (parsed as Power Fx → publish fails).
+- Connector microsoftcopilotstudio, connection 4e3997475d5f44138a96fcbace254315; app calls ExecuteCopilotAsyncV2(AGENT_NAME, {message, notificationUrl}, conversationId) in src/copilot/agent.ts
+- Protocol: app sends JSON {question, page, me, today, data snapshot (salary only for pay questions)}; agent replies JSON {answer, actions[openCandidate|scheduleInterview|sendOffer|completeTask], suggestions}; actions run via app services after user Confirm (src/copilot/actions.ts)
+- UI: src/copilot/CopilotPanel.tsx + copilot.css (FAB "Ask Copilot", Ctrl+J)
+- Status: deployed 2026-10-04, verified working by user (fix: aISettings.useModelKnowledge must be true — false gives "not able to find a related topic")

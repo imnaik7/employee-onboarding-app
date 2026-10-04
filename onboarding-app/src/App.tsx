@@ -10,6 +10,7 @@ import { Aura } from './shell/Aura';
 import { Sidebar } from './shell/Sidebar';
 import { TopBar } from './shell/TopBar';
 import { CommandPalette } from './shell/CommandPalette';
+import { CopilotPanel } from './copilot/CopilotPanel';
 import { PageSkeleton } from './ui/Skeletons';
 import { Dashboard } from './pages/Dashboard';
 import { Candidates } from './pages/Candidates';
@@ -19,6 +20,7 @@ import { Interviews } from './pages/Interviews';
 import { Onboarding } from './pages/Onboarding';
 import './styles/tokens.css';
 import './App.css';
+import './copilot/copilot.css';
 
 function readPref(key: string, fallback: string): string {
   try {
@@ -134,6 +136,7 @@ function Shell({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => vo
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNavigate={navigate} onToggleTheme={onToggleTheme} />
+      {candidates && <CopilotPanel view={view} onNavigate={navigate} />}
     </div>
   );
 }
