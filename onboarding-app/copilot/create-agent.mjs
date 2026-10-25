@@ -1,7 +1,7 @@
 // Creates (or updates) the "Onboarding Copilot" Copilot Studio agent in the EmployeeOnboarding solution,
 // sets its instructions + SharePoint knowledge, and publishes it. Idempotent — re-run after editing INSTRUCTIONS.
 // Usage: az login  &&  node onboarding-app/copilot/create-agent.mjs
-import { api, log } from '../../retail-dataverse/lib.mjs';
+import { api, log } from './lib.mjs';
 
 const SOLUTION = 'EmployeeOnboarding';
 const SCHEMA = 'onb_onboardingCopilot';
